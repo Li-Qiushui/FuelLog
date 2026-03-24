@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>油耗计算器</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+
+</head>
+<body>
+    <div id="app" class="container">
+        <section class="card">
+            <h1>油耗记录与计算</h1>
+            <p class="subtitle">首页仅显示核心油耗结果，配置和录入在弹窗中完成</p>
+
+            <el-alert
+                v-if="message"
+                :title="message"
+                :type="messageType"
+                :closable="false"
+                show-icon>
+            </el-alert>
+
+            <div v-if="latestRecord" class="dashboard-grid">
+                <div class="metric-card">
+                    <div class="metric-title">行驶里程</div>
+                    <div class="metric-value">{{ latestRecord.distanceText }} km</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">花费</div>
+                    <div class="metric-value">{{ latestRecord.costText }} 元</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">百公里油耗</div>
+                    <div class="metric-value">{{ latestRecord.consumptionText }}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">每公里费用</div>
+                    <div class="metric-value">{{ latestRecord.costPerKmText }}</div>
+                </div>
+            </div>
+
+            <el-empty v-else description="暂无可展示数据，请先录入一条记录"></el-empty>
+
+            <section class="history home-history">
+                <div class="history-head">
+                    <h2>加油记录</h2>
+                    <div class="history-card-actions">
+                        <el-button type="primary" @click="formDialogVisible = true">录入</el-button>
+                    </div>
+                </div>
+                <div class="data-tools">
+                    <el-button type="success" plain @click="exportData">导出记录</el-button>
+                    <el-button type="warning" plain @click="triggerImport">导入记录</el-button>
+                    <input
+                        ref="importInput"
+                        class="hidden-input"
+                        type="file"
+                        accept="application/json"
+                        @change="importData">
+                </div>
+                <div class="history-cards" v-if="displayRecords.length">
+                    <article class="history-card" v-for="item in displayRecords" :key="'home-' + item.originIndex">
+                        <div class="history-card-head">
+                            <div class="history-card-date">{{ item.date }}</div>
+                            <div class="history-card-actions">
+                                <el-button type="text" @click="openRecordDetail(item)">查看</el-button>
+                                <el-button type="text" @click="removeRecord(item.originIndex)">删除</el-button>
+                            </div>
+                        </div>
+                        <div class="history-card-grid">
+                            <div class="history-card-row"><span>行驶里程</span><strong>{{ item.distanceText }} km</strong></div>
+                            <div class="history-card-row"><span>花费</span><strong>{{ item.costText }} 元</strong></div>
+                            <div class="history-card-row"><span>百公里油耗</span><strong>{{ item.consumptionText }}</strong></div>
+                            <div class="history-card-row"><span>每公里费用</span><strong>{{ item.costPerKmText }}</strong></div>
+                        </div>
+                    </article>
+                </div>
+                <el-empty v-else description="暂无加油记录"></el-empty>
+            </section>
+
+            <el-dialog
+                title="录入与配置"
+                :visible.sync="formDialogVisible"
+                :fullscreen="true"
+                :show-close="false"
+                :append-to-body="true">
+                <section class="config">
+                    <h2>基础配置</h2>
+                    <div v-if="!isEditingStartOdometer && config.startOdometer" class="config-summary">
+                        <span>当前起始满油表显：{{ Number(config.startOdometer).toFixed(1) }} km</span>
+                        <el-button type="text" @click="editStartOdometer">修改</el-button>
+                    </div>
+                    <el-form v-else :model="config" label-width="180px" class="fuel-form">
+                        <el-form-item label="起始满油表显里程（km）">
+                            <el-input v-model.number="config.startOdometer" type="number" placeholder="例如：15230.5"></el-input>
+                        </el-form-item>
+                        <el-form-item>
+                            <el-button type="primary" plain @click="saveConfig">保存配置</el-button>
+                        </el-form-item>
+                    </el-form>
+                </section>
+
+                <el-form :model="form" label-width="150px" class="fuel-form">
+                    <el-form-item label="当前表显里程（km）">
+                        <el-input v-model.number="form.currentOdometer" type="number" placeholder="例如：15650.8"></el-input>
+                    </el-form-item>
+
+                    <el-form-item label="加油量（升）">
+                        <el-input v-model.number="form.fuel" type="number" placeholder="例如：32.8"></el-input>
+                    </el-form-item>
+
+                    <el-form-item label="本次花费（元）">
+                        <el-input v-model.number="form.cost" type="number" placeholder="例如：245.6"></el-input>
+                    </el-form-item>
+
+                    <el-form-item label="加油日期（必选）">
+                        <el-date-picker
+                            v-model="form.date"
+                            type="date"
+                            value-format="yyyy-MM-dd"
+                            placeholder="选择日期">
+                        </el-date-picker>
+                    </el-form-item>
+
+                    <el-form-item>
+                        <el-button type="primary" @click="submitRecord">计算并保存本次记录</el-button>
+                        <el-button @click="resetForm">重置</el-button>
+                    </el-form-item>
+                </el-form>
+                <span slot="footer" class="dialog-footer">
+                    <el-button @click="formDialogVisible = false">关闭</el-button>
+                </span>
+            </el-dialog>
+            <el-dialog
+                title="加油记录详情"
+                :visible.sync="detailDialogVisible"
+                width="90%"
+                :append-to-body="true">
+                <div v-if="detailRecord" class="detail-grid">
+                    <div class="history-card-row"><span>日期</span><strong>{{ detailRecord.date }}</strong></div>
+                    <div class="history-card-row"><span>起始表显</span><strong>{{ detailRecord.startOdometerText }} km</strong></div>
+                    <div class="history-card-row"><span>当前表显</span><strong>{{ detailRecord.currentOdometerText }} km</strong></div>
+                    <div class="history-card-row"><span>行驶里程</span><strong>{{ detailRecord.distanceText }} km</strong></div>
+                    <div class="history-card-row"><span>加油量</span><strong>{{ detailRecord.fuelText }} L</strong></div>
+                    <div class="history-card-row"><span>花费</span><strong>{{ detailRecord.costText }} 元</strong></div>
+                    <div class="history-card-row"><span>百公里油耗</span><strong>{{ detailRecord.consumptionText }}</strong></div>
+                    <div class="history-card-row"><span>每公里费用</span><strong>{{ detailRecord.costPerKmText }}</strong></div>
+                    <div class="history-card-row"><span>每升油价</span><strong>{{ detailRecord.pricePerLiterText }}</strong></div>
+                </div>
+            </el-dialog>
+        </section>
+    </div>
+
+    <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+    <script src="script/script.js"></script>
+</body>
+</html>
